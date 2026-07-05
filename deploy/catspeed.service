@@ -10,8 +10,9 @@ WorkingDirectory=/home/pi/catspeed
 # Use the project's virtualenv if you made one, else system python3.
 ExecStart=/home/pi/catspeed/.venv/bin/python -m catspeed.main
 Environment=CATSPEED_DB_PATH=/home/pi/catspeed/data/speed.db
-# Tune the wheel size here without editing code:
-# Environment=CATSPEED_WHEEL_DIAMETER_M=0.305
+# Measured 2026-07-05 (29" chord, 3 magnets @ 120°):
+Environment=CATSPEED_WHEEL_DIAMETER_M=0.851
+Environment=CATSPEED_MAGNETS_PER_REV=3
 Restart=on-failure
 RestartSec=5
 

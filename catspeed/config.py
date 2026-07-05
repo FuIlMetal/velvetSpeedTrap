@@ -23,14 +23,14 @@ def _env_str(name: str, default: str) -> str:
 
 
 # --- Wheel geometry -------------------------------------------------------
-# Measure yours precisely (tape a string to the rim, mark one revolution,
-# measure it flat). A 1 cm error is ~3% error on every reading.
-WHEEL_DIAMETER_M = _env_float("CATSPEED_WHEEL_DIAMETER_M", 0.30)  # 12" ~= 0.305 m
+# Measured 2026-07-05: 3 magnets at 120°, 29.0" chord magnet-to-magnet.
+# D = chord * 2/sqrt(3) = 33.49" = 0.851 m. Circumference ~2.672 m.
+WHEEL_DIAMETER_M = _env_float("CATSPEED_WHEEL_DIAMETER_M", 0.851)
 WHEEL_CIRCUMFERENCE = pi * WHEEL_DIAMETER_M
 
 # Number of magnets on the wheel. With N evenly-spaced magnets each pulse
 # covers circumference / N, so the per-pulse distance is divided accordingly.
-MAGNETS_PER_REV = _env_int("CATSPEED_MAGNETS_PER_REV", 1)
+MAGNETS_PER_REV = _env_int("CATSPEED_MAGNETS_PER_REV", 3)
 DISTANCE_PER_PULSE_M = WHEEL_CIRCUMFERENCE / MAGNETS_PER_REV
 
 # --- GPIO pins (BCM numbering) -------------------------------------------
