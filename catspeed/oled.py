@@ -32,12 +32,14 @@ def _load_fonts():
     for path in candidates:
         try:
             return (
-                ImageFont.truetype(path, 34),  # big
-                ImageFont.truetype(path, 24),  # medium
+                ImageFont.truetype(path, 32),  # big
                 ImageFont.truetype(path, 11),  # small
+                ImageFont.truetype(path, 10),  # tiny
             )
         except (OSError, IOError):
             continue
+    log.warning("No TrueType font found; install with: "
+                "sudo apt install fonts-dejavu-core")
     default = ImageFont.load_default()
     return default, default, default
 
@@ -48,7 +50,7 @@ class OledDisplay:
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="oled", daemon=True)
         self._device = None
-        self._big = self._med = self._small = None
+        self._big = self._small = self._tiny = None
         self._contrast = None  # last contrast we set; avoids redundant I2C writes
 
         if not simulate:
@@ -57,7 +59,7 @@ class OledDisplay:
                 from luma.oled.device import ssd1306
                 serial = i2c(port=config.OLED_I2C_PORT, address=config.OLED_I2C_ADDR)
                 self._device = ssd1306(serial)
-                self._big, self._med, self._small = _load_fonts()
+                self._big, self._small, self._tiny = _load_fonts()
             except Exception as exc:  # no panel / no luma -> console fallback
                 log.warning("OLED unavailable (%s); using console fallback", exc)
                 self._device = None
@@ -117,20 +119,31 @@ class OledDisplay:
             if self._stop.wait(period):
                 break
 
+    def _right(self, draw, y, text, font, right=128):
+        w = draw.textlength(text, font=font)
+        draw.text((right - w, y), text, font=font, fill="white")
+
     def _render_running(self, state: Dict[str, float]) -> None:
+        # Two-color panel: rows 0-15 are yellow, 16-63 blue. Keep the big
+        # number fully below y=16 so it never straddles the color split.
         from luma.core.render import canvas
         with canvas(self._device) as draw:
-            draw.text((0, 0), f"{state['current_mph']:5.2f}", font=self._big, fill="white")
-            draw.text((104, 22), "mph", font=self._small, fill="white")
-            draw.text((0, 42), f"today: {state['peak_today']:.2f}", font=self._small, fill="white")
-            draw.text((0, 53), f"record: {state['all_time_peak']:.2f}", font=self._small, fill="white")
+            draw.text((0, 2), "VELVET", font=self._small, fill="white")
+            self._right(draw, 2, "mph", self._small)
+            speed = f"{state['current_mph']:.2f}"
+            w = draw.textlength(speed, font=self._big)
+            draw.text(((128 - w) // 2, 17), speed, font=self._big, fill="white")
+            draw.text((0, 53), f"today {state['peak_today']:.2f}", font=self._tiny, fill="white")
+            self._right(draw, 53, f"top {state['all_time_peak']:.2f}", self._tiny)
 
     def _render_idle(self, state: Dict[str, float]) -> None:
         from luma.core.render import canvas
         ago = format_ago(state.get("last_run_epoch"))
         with canvas(self._device) as draw:
-            draw.text((0, 0), "RECORD", font=self._small, fill="white")
-            draw.text((0, 11), f"{state['all_time_peak']:.2f}", font=self._med, fill="white")
-            draw.text((92, 24), "mph", font=self._small, fill="white")
-            draw.text((0, 42), f"today: {state['peak_today']:.2f}", font=self._small, fill="white")
-            draw.text((0, 53), f"last run: {ago}", font=self._small, fill="white")
+            draw.text((0, 2), "RECORD", font=self._small, fill="white")
+            self._right(draw, 2, "mph", self._small)
+            rec = f"{state['all_time_peak']:.2f}"
+            w = draw.textlength(rec, font=self._big)
+            draw.text(((128 - w) // 2, 17), rec, font=self._big, fill="white")
+            draw.text((0, 53), f"today {state['peak_today']:.2f}", font=self._tiny, fill="white")
+            self._right(draw, 53, ago, self._tiny)
