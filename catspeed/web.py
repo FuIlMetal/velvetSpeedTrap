@@ -17,18 +17,137 @@ eventlet/gevent — friendlier on a Pi Zero 2 W.
 """
 
 import logging
+import threading
+import time
 from datetime import datetime
-from typing import Callable, Dict, List
+from math import pi
+from typing import Callable, Dict, List, Optional
 
 from flask import Flask, jsonify, render_template, request
 from flask_socketio import SocketIO, emit
 
-from . import db
+from . import config, db
 from .util import format_ago
 
 log = logging.getLogger("catspeed.web")
 
 socketio = SocketIO(async_mode="threading", cors_allowed_origins="*")
+
+
+class Calibrator:
+    """
+    Web port of catspeed.calibrate — records raw Hall pulses while a session
+    is active and streams them to the dashboard over Socket.IO.
+
+    Modes:
+      monitor : live per-pulse dt + implied mph (calibrate.py `monitor`)
+      revs    : count pulses across N hand-turned revolutions (`revs`)
+
+    main.py feeds every raw pulse in here; when no session is active this is
+    a single lock-free-ish check and return, so it costs nothing in normal
+    operation.
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self.mode: Optional[str] = None
+        self.count = 0
+        self.last: Optional[float] = None
+        self.peak = 0.0
+        self.target_revs = 0
+        self.started_at = 0.0
+
+    # -- pulse path (sensor callback thread) ------------------------------
+
+    def on_pulse(self) -> None:
+        if self.mode is None:          # fast path: not calibrating
+            return
+        now = time.monotonic()
+        with self._lock:
+            if self.mode is None:
+                return
+            self.count += 1
+            n = self.count
+            last = self.last
+            self.last = now
+            mode = self.mode
+
+        payload = {"n": n, "mode": mode}
+        if last is not None:
+            dt_ms = (now - last) * 1000.0
+            payload["dt_ms"] = round(dt_ms, 1)
+            if dt_ms < config.PULSE_DEBOUNCE_MS:
+                payload["debounced"] = True
+            else:
+                mph = (config.DISTANCE_PER_PULSE_M / (now - last)) * config.MPS_TO_MPH
+                payload["mph"] = round(mph, 2)
+                payload["implausible"] = mph > config.MAX_PLAUSIBLE_MPH
+                with self._lock:
+                    self.peak = max(self.peak, mph)
+                    payload["peak"] = round(self.peak, 2)
+        socketio.emit("cal_pulse", payload)
+
+    # -- session control (Flask request threads) --------------------------
+
+    def start(self, mode: str, target_revs: int = 0) -> dict:
+        with self._lock:
+            self.mode = mode
+            self.count = 0
+            self.last = None
+            self.peak = 0.0
+            self.target_revs = target_revs
+            self.started_at = time.time()
+        return self.state()
+
+    def stop(self) -> dict:
+        with self._lock:
+            mode, count, peak, target = self.mode, self.count, self.peak, self.target_revs
+            self.mode = None
+        result = {"mode": mode, "pulses": count, "peak_mph": round(peak, 2)}
+        if mode == "revs" and target > 0:
+            result.update(self._analyze_revs(count, target))
+        return result
+
+    def state(self) -> dict:
+        with self._lock:
+            return {
+                "mode": self.mode,
+                "pulses": self.count,
+                "peak_mph": round(self.peak, 2),
+                "target_revs": self.target_revs,
+            }
+
+    @staticmethod
+    def _analyze_revs(measured: int, target: int) -> dict:
+        """Same logic as calibrate.cmd_revs, returned as data for the UI."""
+        expected = target * config.MAGNETS_PER_REV
+        out = {"target_revs": target, "expected_pulses": expected}
+        if measured == 0:
+            out["verdict"] = "fail"
+            out["message"] = ("No pulses — check wiring, pin (CATSPEED_HALL_PIN), "
+                              "magnet gap (3-5 mm), and sensor flat-face orientation.")
+            return out
+        per_rev = measured / target
+        out["pulses_per_rev"] = round(per_rev, 2)
+        nearest = round(per_rev)
+        if abs(per_rev - nearest) < 0.15 and nearest >= 1:
+            if nearest != config.MAGNETS_PER_REV:
+                out["verdict"] = "mismatch"
+                out["message"] = (f"Looks like {nearest} pulse(s)/rev but config says "
+                                  f"{config.MAGNETS_PER_REV}. Set "
+                                  f"CATSPEED_MAGNETS_PER_REV={nearest}")
+            else:
+                out["verdict"] = "ok"
+                out["message"] = "Matches configured magnets/rev. Sensor counting looks good."
+        else:
+            out["verdict"] = "noisy"
+            out["message"] = ("Non-integer pulses/rev suggests missed or double pulses. "
+                              "Re-check the magnet gap and debounce "
+                              "(CATSPEED_PULSE_DEBOUNCE_MS).")
+        return out
+
+
+calibrator = Calibrator()
 
 # Wired up by create_app(); set by main.py.
 _ctx: Dict[str, object] = {}
@@ -67,6 +186,14 @@ def create_app(tracker, treat, get_state: Callable[[], Dict[str, float]]) -> Fla
             cooldown=treat.cooldown_s,
             last_run_epoch=last_run_epoch,
             last_run_ago=format_ago(last_run_epoch),
+            wheel={
+                "diameter_m": config.WHEEL_DIAMETER_M,
+                "circumference_m": config.WHEEL_CIRCUMFERENCE,
+                "magnets_per_rev": config.MAGNETS_PER_REV,
+                "distance_per_pulse_m": config.DISTANCE_PER_PULSE_M,
+                "debounce_ms": config.PULSE_DEBOUNCE_MS,
+                "max_plausible_mph": config.MAX_PLAUSIBLE_MPH,
+            },
         )
 
     @app.route("/api/state")
@@ -116,6 +243,56 @@ def create_app(tracker, treat, get_state: Callable[[], Dict[str, float]]) -> Fla
     def api_test_treat():
         treat.dispense()
         return jsonify({"ok": True})
+
+    # --- calibration (web port of catspeed.calibrate) --------------------
+
+    @app.route("/api/calibrate/start", methods=["POST"])
+    def api_cal_start():
+        body = request.get_json(force=True) or {}
+        mode = body.get("mode")
+        if mode not in ("monitor", "revs"):
+            return jsonify({"ok": False, "error": "mode must be 'monitor' or 'revs'"}), 400
+        revs = int(body.get("revs", 10)) if mode == "revs" else 0
+        if mode == "revs" and revs < 1:
+            return jsonify({"ok": False, "error": "revs must be >= 1"}), 400
+        return jsonify({"ok": True, **calibrator.start(mode, revs)})
+
+    @app.route("/api/calibrate/stop", methods=["POST"])
+    def api_cal_stop():
+        return jsonify({"ok": True, **calibrator.stop()})
+
+    @app.route("/api/calibrate/state")
+    def api_cal_state():
+        return jsonify(calibrator.state())
+
+    @app.route("/api/calibrate/circ", methods=["POST"])
+    def api_cal_circ():
+        """Pure math: measured circumference <-> diameter + the env line to set."""
+        body = request.get_json(force=True) or {}
+        circ = body.get("circumference")
+        dia = body.get("diameter")
+        try:
+            if circ is not None:
+                circ = float(circ)
+                dia = circ / pi
+            elif dia is not None:
+                dia = float(dia)
+                circ = dia * pi
+            else:
+                raise ValueError
+            if dia <= 0:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"ok": False,
+                            "error": "expected {'circumference': m} or {'diameter': m}"}), 400
+        return jsonify({
+            "ok": True,
+            "diameter_m": round(dia, 4),
+            "diameter_in": round(dia / 0.0254, 1),
+            "circumference_m": round(circ, 4),
+            "env_line": f"CATSPEED_WHEEL_DIAMETER_M={dia:.4f}",
+            "current_diameter_m": config.WHEEL_DIAMETER_M,
+        })
 
     @socketio.on("connect")
     def on_connect():

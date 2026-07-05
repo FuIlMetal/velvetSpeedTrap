@@ -33,7 +33,8 @@ python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m catspeed.main
 ```
-Then open `http://<pi-ip>:5000/`.
+Then open `http://<pi-ip>:5000/` (or just `http://<hostname>/` once the
+systemd service is installed — it binds port 80).
 
 **On your laptop (no hardware) — develop the dashboard with fake runs:**
 ```bash
@@ -59,6 +60,8 @@ touch:
 | `CATSPEED_DEFAULT_THRESHOLD_MPH` | `8.0` | Initial treat threshold |
 | `CATSPEED_DEFAULT_COOLDOWN_S` | `60` | Min seconds between treats |
 | `CATSPEED_DB_PATH` | `data/speed.db` | SQLite file |
+| `CATSPEED_OLED_ENABLED` | `0` | OLED loop is **off for now**; set `1` (or run `--oled`) to re-enable |
+| `CATSPEED_WEB_PORT` | `5000` | The systemd unit overrides this to `80` |
 
 Threshold and cooldown are also editable live from the dashboard and persist
 in the `settings` table (they win over the env defaults once set).
@@ -74,8 +77,16 @@ in the `settings` table (they win over the env defaults once set).
 | POST | `/api/threshold` | `{"mph": 8.0}` | set + persist threshold |
 | POST | `/api/cooldown` | `{"seconds": 60}` | set + persist cooldown |
 | POST | `/api/test_treat` | — | dispense one treat now (ignores cooldown) |
+| POST | `/api/calibrate/start` | `{"mode": "monitor"}` or `{"mode": "revs", "revs": 10}` | begin a calibration session |
+| POST | `/api/calibrate/stop` | — | end session; revs mode returns pulses/rev analysis |
+| GET | `/api/calibrate/state` | — | current calibration session state |
+| POST | `/api/calibrate/circ` | `{"circumference": 2.672}` or `{"diameter": 0.851}` | convert measurement → config env line |
 
-Socket.IO events pushed to the browser: `speed`, `run`, `treat`.
+Socket.IO events pushed to the browser: `speed`, `run`, `treat`, `cal_pulse`.
+
+The calibration checks (`catspeed.calibrate` monitor / revs / circ) are also
+available from the dashboard's **Calibration** card — no SSH session needed.
+Note: hand-spins during calibration still get logged as runs.
 
 ## Run as a service
 

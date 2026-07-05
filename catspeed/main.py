@@ -38,6 +38,11 @@ def parse_args():
     p = argparse.ArgumentParser(description="Cat Speed Trap")
     p.add_argument("--simulate", action="store_true",
                    help="run without GPIO/OLED hardware (fake pulses + stub relay)")
+    p.add_argument("--oled", dest="oled", action="store_true",
+                   default=config.OLED_ENABLED,
+                   help="enable the OLED loop (default: config.OLED_ENABLED)")
+    p.add_argument("--no-oled", dest="oled", action="store_false",
+                   help="disable the OLED loop entirely")
     p.add_argument("--host", default=config.WEB_HOST)
     p.add_argument("--port", type=int, default=config.WEB_PORT)
     p.add_argument("--db", default=config.DB_PATH, help="SQLite path")
@@ -91,9 +96,20 @@ def main() -> None:
     state = holder["state"]
 
     # --- hardware --------------------------------------------------------
-    hall = HallSensor(tracker.on_pulse, args.simulate)
-    oled = OledDisplay(state.snapshot, simulate=args.simulate)
-    oled.start()
+    # Every raw pulse also feeds the web calibrator (a no-op unless a
+    # calibration session is active in the dashboard).
+    def on_hall_pulse() -> None:
+        web.calibrator.on_pulse()
+        tracker.on_pulse()
+
+    hall = HallSensor(on_hall_pulse, args.simulate)
+
+    oled = None
+    if args.oled:
+        oled = OledDisplay(state.snapshot, simulate=args.simulate)
+        oled.start()
+    else:
+        log.info("OLED disabled (enable with --oled or CATSPEED_OLED_ENABLED=1)")
 
     stop = threading.Event()
     tick_thread = threading.Thread(
@@ -112,7 +128,8 @@ def main() -> None:
         log.info("Shutting down…")
     finally:
         stop.set()
-        oled.stop()
+        if oled is not None:
+            oled.stop()
         hall.close()
         try:
             relay.off()

@@ -13,6 +13,10 @@ Environment=CATSPEED_DB_PATH=/home/pi/catspeed/data/speed.db
 # Measured 2026-07-05 (29" chord, 3 magnets @ 120°):
 Environment=CATSPEED_WHEEL_DIAMETER_M=0.851
 Environment=CATSPEED_MAGNETS_PER_REV=3
+# Serve on port 80 so http://<hostname>/ works without :5000. Ports <1024 are
+# privileged; grant just the bind capability instead of running as root.
+Environment=CATSPEED_WEB_PORT=80
+AmbientCapabilities=CAP_NET_BIND_SERVICE
 Restart=on-failure
 RestartSec=5
 

@@ -41,6 +41,9 @@ RELAY_PIN = _env_int("CATSPEED_RELAY_PIN", 23)
 RELAY_ACTIVE_HIGH = bool(_env_int("CATSPEED_RELAY_ACTIVE_HIGH", 0))
 
 # --- OLED -----------------------------------------------------------------
+# Temporarily disabled (panel off the breadboard for now). Set back to 1 —
+# or run with CATSPEED_OLED_ENABLED=1 — to re-enable; nothing else changed.
+OLED_ENABLED = bool(_env_int("CATSPEED_OLED_ENABLED", 0))
 OLED_I2C_ADDR = int(_env_str("CATSPEED_OLED_I2C_ADDR", "0x3C"), 0)
 OLED_I2C_PORT = _env_int("CATSPEED_OLED_I2C_PORT", 1)
 OLED_REFRESH_HZ = _env_float("CATSPEED_OLED_REFRESH_HZ", 5.0)
