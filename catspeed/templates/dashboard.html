@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🐈 Cat Speed Trap</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #1a1d24; --panel2: #232730;
+    --ink: #e7ecf3; --muted: #8b93a7; --accent: #ffb454; --good: #54d186;
+    --bar: #2b303b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  header { padding: 18px 20px; border-bottom: 1px solid #262b35; }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 20px; }
+  .grid { display: grid; gap: 16px; }
+  @media (min-width: 720px) { .cols { grid-template-columns: 1.2fr 1fr; } }
+  .card { background: var(--panel); border: 1px solid #262b35; border-radius: 14px; padding: 18px; }
+  .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+
+  .speedo { text-align: center; padding: 8px 0 4px; }
+  .speedo .big { font-size: 84px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .speedo .unit { font-size: 22px; color: var(--muted); margin-left: 6px; }
+  .speedo.hot .big { color: var(--accent); text-shadow: 0 0 24px rgba(255,180,84,.5); }
+
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+  .stat { background: var(--panel2); border-radius: 10px; padding: 10px 12px; }
+  .stat .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .l { font-size: 12px; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 7px 8px; font-variant-numeric: tabular-nums; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); border-bottom: 1px solid #2b303b; }
+  tbody tr:nth-child(odd) { background: #181b22; }
+  td.rank { color: var(--muted); width: 28px; }
+  .pill { background: var(--good); color: #0b2417; border-radius: 20px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input[type=number] { width: 100%; padding: 9px 10px; border-radius: 9px; border: 1px solid #303642;
+    background: #11141a; color: var(--ink); font-size: 15px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .row > div { flex: 1; min-width: 120px; }
+  button { cursor: pointer; border: 0; border-radius: 9px; padding: 10px 14px; font-weight: 600; font-size: 14px; }
+  button.primary { background: var(--accent); color: #2a1b00; }
+  button.ghost { background: var(--panel2); color: var(--ink); border: 1px solid #303642; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .statusbar { display: flex; align-items: center; gap: 8px; background: var(--panel);
+    border: 1px solid #262b35; border-radius: 12px; padding: 10px 16px; font-size: 14px; }
+  .statusbar .sep { color: #3a4150; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+  .statusbar.running .dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse 1s infinite; }
+  .statusbar.running #statusText { color: var(--accent); font-weight: 700; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: var(--good); color: #08230f; padding: 10px 18px; border-radius: 24px;
+    font-weight: 700; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header><h1>🐈‍⬛ Cat Speed Trap</h1></header>
+<div class="wrap grid">
+
+  <div class="statusbar" id="statusbar">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">waiting for the cat…</span>
+    <span class="sep">·</span>
+    <span class="muted">last run <b id="lastRun">{{ last_run_ago }}</b></span>
+  </div>
+
+  <div class="grid cols">
+    <div class="card">
+      <h2>Live speed</h2>
+      <div class="speedo" id="speedo">
+        <span class="big" id="speed">0.00</span><span class="unit">mph</span>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="n" id="peakToday">{{ '%.2f'|format(peak_today) }}</div><div class="l">peak today</div></div>
+        <div class="stat"><div class="n" id="allTime">{{ '%.2f'|format(all_time) }}</div><div class="l">all-time record</div></div>
+        <div class="stat"><div class="n" id="runCount">{{ run_count }}</div><div class="l">total runs</div></div>
+        <div class="stat"><div class="n" id="treatsToday">{{ treats_today }}</div><div class="l">treats today</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Treat settings</h2>
+      <div class="row">
+        <div>
+          <label>Threshold (mph)</label>
+          <input type="number" id="threshold" step="0.1" min="0" value="{{ '%.1f'|format(threshold) }}">
+        </div>
+        <div>
+          <label>Cooldown (s)</label>
+          <input type="number" id="cooldown" step="1" min="0" value="{{ '%.0f'|format(cooldown) }}">
+        </div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button class="primary" onclick="saveSettings()">Save</button>
+        <button class="ghost" onclick="testTreat()">🍪 Test treat</button>
+      </div>
+      <p class="muted" id="settingsMsg" style="margin-top:10px">
+        Hit <b>{{ '%.1f'|format(threshold) }} mph</b> to earn a treat (one per {{ '%.0f'|format(cooldown) }}s).
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🏆 Leaderboard — top 10</h2>
+    <table>
+      <thead><tr><th>#</th><th>Peak</th><th>Avg</th><th>Duration</th><th>Rev</th><th>When</th><th></th></tr></thead>
+      <tbody id="topBody">
+        {% for r in top %}
+        <tr>
+          <td class="rank">{{ loop.index }}</td>
+          <td><b>{{ '%.2f'|format(r.peak_mph) }}</b></td>
+          <td>{{ '%.2f'|format(r.avg_mph) }}</td>
+          <td>{{ '%.1f'|format(r.duration_s) }}s</td>
+          <td>{{ r.revolutions }}</td>
+          <td class="muted">{{ r.started_at_human }}</td>
+          <td>{% if r.treat_given %}<span class="pill">treat</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="muted">No runs yet — spin the wheel!</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Recent runs</h2>
+    <table>
+      <thead><tr><th>Peak</th><th>Avg</th><th>Duration</th><th>When</th><th></th></tr></thead>
+      <tbody id="recentBody">
+        {% for r in recent %}
+        <tr>
+          <td><b>{{ '%.2f'|format(r.peak_mph) }}</b></td>
+          <td>{{ '%.2f'|format(r.avg_mph) }}</td>
+          <td>{{ '%.1f'|format(r.duration_s) }}s</td>
+          <td class="muted">{{ r.started_at_human }}</td>
+          <td>{% if r.treat_given %}<span class="pill">treat</span>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">No runs yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const speedEl = $("speed"), speedo = $("speedo");
+  const thresholdEl = $("threshold");
+
+  const statusbar = $("statusbar"), statusText = $("statusText"), lastRunEl = $("lastRun");
+  let lastRunEpoch = parseFloat("{{ last_run_epoch }}") || 0;
+
+  function setRunning(running) {
+    statusbar.classList.toggle("running", running);
+    statusText.textContent = running ? "🏃 RUNNING" : "😴 idle";
+  }
+  setRunning(false);
+
+  function fmtAgo(epoch) {
+    if (!epoch) return "—";
+    const s = Date.now() / 1000 - epoch;
+    if (s < 60) return "just now";
+    if (s < 3600) return Math.floor(s / 60) + "m ago";
+    if (s < 86400) return Math.floor(s / 3600) + "h ago";
+    return Math.floor(s / 86400) + "d ago";
+  }
+  function refreshLastRun() { lastRunEl.textContent = fmtAgo(lastRunEpoch); }
+  setInterval(refreshLastRun, 30000);  // keep "X ago" honest while she's asleep
+
+  const socket = io();
+
+  socket.on("speed", (d) => {
+    const mph = Number(d.mph) || 0;
+    speedEl.textContent = mph.toFixed(2);
+    const thr = parseFloat(thresholdEl.value) || Infinity;
+    speedo.classList.toggle("hot", mph >= thr);
+    setRunning(mph > 0);
+    if (mph > parseFloat($("peakToday").textContent)) $("peakToday").textContent = mph.toFixed(2);
+    if (mph > parseFloat($("allTime").textContent)) $("allTime").textContent = mph.toFixed(2);
+  });
+
+  socket.on("run", (r) => {
+    toast(`Run logged: ${r.peak_mph.toFixed(2)} mph peak`);
+    lastRunEpoch = Date.now() / 1000;
+    refreshLastRun();
+    setRunning(false);
+    setTimeout(refreshTables, 400);  // let the DB write settle
+  });
+
+  socket.on("treat", () => {
+    toast("🍪 Treat dispensed!");
+    $("treatsToday").textContent = (parseInt($("treatsToday").textContent) || 0) + 1;
+  });
+
+  async function saveSettings() {
+    const mph = parseFloat(thresholdEl.value);
+    const seconds = parseFloat($("cooldown").value);
+    await fetch("/api/threshold", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({mph})});
+    await fetch("/api/cooldown", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({seconds})});
+    $("settingsMsg").innerHTML = `Hit <b>${mph.toFixed(1)} mph</b> to earn a treat (one per ${seconds.toFixed(0)}s).`;
+    toast("Settings saved");
+  }
+
+  async function testTreat() {
+    await fetch("/api/test_treat", {method:"POST"});
+  }
+
+  async function refreshTables() {
+    const [top, recent] = await Promise.all([
+      fetch("/api/top?n=10").then(r => r.json()),
+      fetch("/api/recent?n=10").then(r => r.json()),
+    ]);
+    $("topBody").innerHTML = top.map((r, i) => `
+      <tr><td class="rank">${i+1}</td><td><b>${r.peak_mph.toFixed(2)}</b></td>
+      <td>${r.avg_mph.toFixed(2)}</td><td>${r.duration_s.toFixed(1)}s</td>
+      <td>${r.revolutions}</td><td class="muted">${r.started_at_human}</td>
+      <td>${r.treat_given ? '<span class="pill">treat</span>' : ''}</td></tr>`).join("")
+      || `<tr><td colspan="7" class="muted">No runs yet — spin the wheel!</td></tr>`;
+    $("recentBody").innerHTML = recent.map((r) => `
+      <tr><td><b>${r.peak_mph.toFixed(2)}</b></td><td>${r.avg_mph.toFixed(2)}</td>
+      <td>${r.duration_s.toFixed(1)}s</td><td class="muted">${r.started_at_human}</td>
+      <td>${r.treat_given ? '<span class="pill">treat</span>' : ''}</td></tr>`).join("")
+      || `<tr><td colspan="5" class="muted">No runs yet.</td></tr>`;
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+</script>
+</body>
+</html>

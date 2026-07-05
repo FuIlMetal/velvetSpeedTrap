@@ -1,0 +1,19 @@
+[Unit]
+Description=Cat Speed Trap (sensor + OLED + web dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/catspeed
+# Use the project's virtualenv if you made one, else system python3.
+ExecStart=/home/pi/catspeed/.venv/bin/python -m catspeed.main
+Environment=CATSPEED_DB_PATH=/home/pi/catspeed/data/speed.db
+# Tune the wheel size here without editing code:
+# Environment=CATSPEED_WHEEL_DIAMETER_M=0.305
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

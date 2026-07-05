@@ -1,0 +1,22 @@
+# Cat Speed Trap dependencies
+# Install on the Pi with:  pip install -r requirements.txt
+
+# Web dashboard + live feed
+Flask>=3.0
+Flask-SocketIO>=5.3
+# Pure-Python WebSocket transport so async_mode="threading" works without
+# eventlet/gevent (which are painful to build on a Pi Zero).
+simple-websocket>=1.0
+
+# OLED display
+luma.oled>=3.12
+Pillow>=10.0
+
+# GPIO (Hall sensor + relay). On Raspberry Pi OS Bookworm, lgpio is the
+# default backend; on older images RPi.GPIO is used instead.
+gpiozero>=2.0
+lgpio>=0.2 ; platform_machine == "armv7l" or platform_machine == "aarch64"
+
+# NOTE: gpiozero, luma.oled and lgpio are only importable on the Pi.
+# Off-Pi (e.g. developing the dashboard on Windows) run with --simulate;
+# the hardware layer falls back to stubs and you only need Flask/SocketIO.
