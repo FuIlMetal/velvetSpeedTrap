@@ -186,6 +186,12 @@ def create_app(tracker, treat, get_state: Callable[[], Dict[str, float]]) -> Fla
             cooldown=treat.cooldown_s,
             last_run_epoch=last_run_epoch,
             last_run_ago=format_ago(last_run_epoch),
+        )
+
+    @app.route("/calibrate")
+    def calibrate_page():
+        return render_template(
+            "calibrate.html",
             wheel={
                 "diameter_m": config.WHEEL_DIAMETER_M,
                 "circumference_m": config.WHEEL_CIRCUMFERENCE,
@@ -193,6 +199,7 @@ def create_app(tracker, treat, get_state: Callable[[], Dict[str, float]]) -> Fla
                 "distance_per_pulse_m": config.DISTANCE_PER_PULSE_M,
                 "debounce_ms": config.PULSE_DEBOUNCE_MS,
                 "max_plausible_mph": config.MAX_PLAUSIBLE_MPH,
+                "override": db.get_setting("wheel_diameter_m") is not None,
             },
         )
 

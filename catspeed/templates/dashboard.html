@@ -1,70 +1,5 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🐈 Cat Speed Trap</title>
-<style>
-  :root {
-    --bg: #0f1115; --panel: #1a1d24; --panel2: #232730;
-    --ink: #e7ecf3; --muted: #8b93a7; --accent: #ffb454; --good: #54d186;
-    --bar: #2b303b;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  }
-  header { padding: 18px 20px; border-bottom: 1px solid #262b35; }
-  header h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
-  .wrap { max-width: 920px; margin: 0 auto; padding: 20px; }
-  .grid { display: grid; gap: 16px; }
-  @media (min-width: 720px) { .cols { grid-template-columns: 1.2fr 1fr; } }
-  .card { background: var(--panel); border: 1px solid #262b35; border-radius: 14px; padding: 18px; }
-  .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
-
-  .speedo { text-align: center; padding: 8px 0 4px; }
-  .speedo .big { font-size: 84px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
-  .speedo .unit { font-size: 22px; color: var(--muted); margin-left: 6px; }
-  .speedo.hot .big { color: var(--accent); text-shadow: 0 0 24px rgba(255,180,84,.5); }
-
-  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
-  .stat { background: var(--panel2); border-radius: 10px; padding: 10px 12px; }
-  .stat .n { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .stat .l { font-size: 12px; color: var(--muted); }
-
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 7px 8px; font-variant-numeric: tabular-nums; }
-  th { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); border-bottom: 1px solid #2b303b; }
-  tbody tr:nth-child(odd) { background: #181b22; }
-  td.rank { color: var(--muted); width: 28px; }
-  .pill { background: var(--good); color: #0b2417; border-radius: 20px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
-
-  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
-  input[type=number] { width: 100%; padding: 9px 10px; border-radius: 9px; border: 1px solid #303642;
-    background: #11141a; color: var(--ink); font-size: 15px; }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
-  .row > div { flex: 1; min-width: 120px; }
-  button { cursor: pointer; border: 0; border-radius: 9px; padding: 10px 14px; font-weight: 600; font-size: 14px; }
-  button.primary { background: var(--accent); color: #2a1b00; }
-  button.ghost { background: var(--panel2); color: var(--ink); border: 1px solid #303642; }
-  .muted { color: var(--muted); font-size: 13px; }
-  .statusbar { display: flex; align-items: center; gap: 8px; background: var(--panel);
-    border: 1px solid #262b35; border-radius: 12px; padding: 10px 16px; font-size: 14px; }
-  .statusbar .sep { color: #3a4150; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
-  .statusbar.running .dot { background: var(--accent); box-shadow: 0 0 10px var(--accent); animation: pulse 1s infinite; }
-  .statusbar.running #statusText { color: var(--accent); font-weight: 700; }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-    background: var(--good); color: #08230f; padding: 10px 18px; border-radius: 24px;
-    font-weight: 700; opacity: 0; transition: opacity .25s; pointer-events: none; }
-  .toast.show { opacity: 1; }
-</style>
-</head>
-<body>
-<header><h1>🐈‍⬛ Cat Speed Trap</h1></header>
-<div class="wrap grid">
+{% extends "base.html" %}
+{% block content %}
 
   <div class="statusbar" id="statusbar">
     <span class="dot" id="statusDot"></span>
@@ -110,70 +45,6 @@
   </div>
 
   <div class="card">
-    <h2>🔧 Calibration</h2>
-    <p class="muted" style="margin:0 0 12px">
-      <span id="wheelInfo">Wheel: ⌀{{ '%.3f'|format(wheel.diameter_m) }} m ·
-      circ {{ '%.3f'|format(wheel.circumference_m) }} m ·
-      {{ wheel.magnets_per_rev }} magnet{{ 's' if wheel.magnets_per_rev != 1 }}/rev ·
-      {{ '%.4f'|format(wheel.distance_per_pulse_m) }} m/pulse ·
-      debounce {{ '%.0f'|format(wheel.debounce_ms) }} ms{% if wheel.override %} ·
-      <b>override active</b>{% endif %}</span>
-      <br>Heads-up: hand-spins during calibration still get logged as runs.
-    </p>
-
-    <div class="grid cols">
-      <div>
-        <h2>Pulse monitor</h2>
-        <div class="row">
-          <button class="primary" id="monBtn" onclick="toggleMonitor()">Start monitor</button>
-        </div>
-        <div class="stats" style="grid-template-columns: repeat(3, 1fr)">
-          <div class="stat"><div class="n" id="calCount">0</div><div class="l">pulses</div></div>
-          <div class="stat"><div class="n" id="calDt">—</div><div class="l">last dt (ms)</div></div>
-          <div class="stat"><div class="n" id="calPeak">0.00</div><div class="l">peak mph</div></div>
-        </div>
-        <pre id="calLog" class="muted" style="height:120px; overflow-y:auto; background:#11141a;
-             border:1px solid #303642; border-radius:9px; padding:8px 10px; font-size:12px;
-             margin:10px 0 0; white-space:pre-wrap"></pre>
-      </div>
-
-      <div>
-        <h2>Pulses-per-rev check</h2>
-        <div class="row">
-          <div>
-            <label>Revolutions to turn</label>
-            <input type="number" id="calRevs" step="1" min="1" value="10">
-          </div>
-          <button class="ghost" id="revBtn" onclick="toggleRevs()">Start count</button>
-        </div>
-        <p class="muted" id="revMsg" style="margin-top:10px">
-          Start, rotate the wheel by hand exactly N full revolutions, then stop.
-        </p>
-
-        <h2 style="margin-top:16px">Wheel geometry</h2>
-        <div class="row">
-          <div>
-            <label>Circumference (m)</label>
-            <input type="number" id="calCirc" step="0.001" min="0" placeholder="string method, plan §8">
-          </div>
-          <div>
-            <label>or Diameter (m)</label>
-            <input type="number" id="calDia" step="0.001" min="0">
-          </div>
-          <button class="ghost" onclick="convertCirc()">Convert</button>
-          <button onclick="applyWheel()">Apply live</button>
-        </div>
-        <p class="muted" id="circMsg" style="margin-top:10px"></p>
-        <p class="muted" style="margin-top:4px">
-          Apply takes effect on the next pulse and persists across restarts
-          (overrides the service Environment= line).
-          <a href="#" onclick="clearWheel(); return false;">Revert to env/default</a>
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
     <h2>🏆 Leaderboard — top 10</h2>
     <table>
       <thead><tr><th>#</th><th>Peak</th><th>Avg</th><th>Duration</th><th>Rev</th><th>When</th><th></th></tr></thead>
@@ -214,13 +85,9 @@
       </tbody>
     </table>
   </div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+{% endblock %}
+{% block scripts %}
 <script>
-  const $ = (id) => document.getElementById(id);
   const speedEl = $("speed"), speedo = $("speedo");
   const thresholdEl = $("threshold");
 
@@ -243,8 +110,6 @@
   }
   function refreshLastRun() { lastRunEl.textContent = fmtAgo(lastRunEpoch); }
   setInterval(refreshLastRun, 30000);  // keep "X ago" honest while she's asleep
-
-  const socket = io();
 
   socket.on("speed", (d) => {
     const mph = Number(d.mph) || 0;
@@ -300,141 +165,6 @@
       || `<tr><td colspan="5" class="muted">No runs yet.</td></tr>`;
   }
 
-  // --- calibration ---------------------------------------------------
-  let calMode = null;
-  const MAX_PLAUSIBLE = parseFloat("{{ wheel.max_plausible_mph }}");
 
-  async function calStart(mode, revs) {
-    const r = await fetch("/api/calibrate/start", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(mode === "revs" ? {mode, revs} : {mode})});
-    const d = await r.json();
-    if (!d.ok) { toast(d.error || "calibration error"); return false; }
-    calMode = mode;
-    $("calCount").textContent = "0"; $("calDt").textContent = "—"; $("calPeak").textContent = "0.00";
-    if (mode === "monitor") $("calLog").textContent = "";
-    return true;
-  }
-
-  async function calStop() {
-    const r = await fetch("/api/calibrate/stop", {method:"POST"});
-    calMode = null;
-    return r.json();
-  }
-
-  async function toggleMonitor() {
-    if (calMode === "monitor") {
-      const d = await calStop();
-      $("monBtn").textContent = "Start monitor";
-      calLogLine(`— stopped: ${d.pulses} pulses, peak ${d.peak_mph.toFixed(2)} mph —`);
-    } else if (!calMode && await calStart("monitor")) {
-      $("monBtn").textContent = "Stop monitor";
-      calLogLine("— monitoring: spin the wheel —");
-    } else if (calMode) {
-      toast("Finish the rev check first");
-    }
-  }
-
-  async function toggleRevs() {
-    if (calMode === "revs") {
-      const d = await calStop();
-      $("revBtn").textContent = "Start count";
-      const per = d.pulses_per_rev !== undefined ? ` → ${d.pulses_per_rev} pulses/rev.` : ".";
-      $("revMsg").innerHTML = `<b>${d.pulses}</b> pulses over ${d.target_revs} revs `
-        + `(expected ~${d.expected_pulses})${per}<br>${d.message || ""}`;
-      $("revMsg").style.color = d.verdict === "ok" ? "var(--good)"
-        : d.verdict ? "var(--accent)" : "var(--muted)";
-    } else if (!calMode) {
-      const revs = parseInt($("calRevs").value) || 10;
-      if (await calStart("revs", revs)) {
-        $("revBtn").textContent = "Stop & analyze";
-        $("revMsg").style.color = "var(--muted)";
-        $("revMsg").textContent = `Counting… rotate exactly ${revs} full revolutions, then stop.`;
-      }
-    } else {
-      toast("Stop the pulse monitor first");
-    }
-  }
-
-  function calLogLine(s) {
-    const log = $("calLog");
-    log.textContent += s + "\n";
-    log.scrollTop = log.scrollHeight;
-  }
-
-  socket.on("cal_pulse", (p) => {
-    $("calCount").textContent = p.n;
-    if (p.dt_ms !== undefined) $("calDt").textContent = p.dt_ms.toFixed(1);
-    if (p.peak !== undefined) $("calPeak").textContent = p.peak.toFixed(2);
-    if (p.mode === "monitor") {
-      let line = `pulse ${String(p.n).padStart(4)}`;
-      if (p.dt_ms === undefined) line += "   (first — no interval yet)";
-      else if (p.debounced) line += `   dt=${p.dt_ms} ms   <debounce, ignored>`;
-      else {
-        line += `   dt=${p.dt_ms} ms   ${p.mph.toFixed(2)} mph`;
-        if (p.implausible) line += `   !! exceeds ${MAX_PLAUSIBLE} mph`;
-      }
-      calLogLine(line);
-    }
-  });
-
-  async function applyWheel() {
-    const circ = parseFloat($("calCirc").value);
-    const dia = parseFloat($("calDia").value);
-    const body = !isNaN(circ) && circ > 0 ? {circumference: circ}
-               : !isNaN(dia) && dia > 0 ? {diameter: dia} : null;
-    if (!body) { toast("Enter circumference or diameter in metres"); return; }
-    const d = await (await fetch("/api/wheel", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)})).json();
-    if (!d.ok) { toast(d.error); return; }
-    updateWheelInfo(d);
-    $("circMsg").innerHTML =
-      `<span style="color:var(--good)">Applied: ⌀ <b>${d.diameter_m} m</b> (${d.diameter_in}")`
-      + ` · circ ${d.circumference_m} m · ${d.distance_per_pulse_m} m/pulse.`
-      + ` Live now, persisted.</span>`;
-  }
-
-  async function clearWheel() {
-    const d = await (await fetch("/api/wheel", {method:"DELETE"})).json();
-    if (!d.ok) { toast(d.error); return; }
-    updateWheelInfo(d);
-    $("circMsg").innerHTML =
-      `Override cleared — back to env/default ⌀ ${d.diameter_m} m.`;
-  }
-
-  function updateWheelInfo(d) {
-    $("wheelInfo").innerHTML =
-      `Wheel: ⌀${d.diameter_m.toFixed(3)} m · circ ${d.circumference_m.toFixed(3)} m · `
-      + `${d.magnets_per_rev} magnet${d.magnets_per_rev !== 1 ? "s" : ""}/rev · `
-      + `${d.distance_per_pulse_m.toFixed(4)} m/pulse · debounce ${d.debounce_ms.toFixed(0)} ms`
-      + (d.override ? " · <b>override active</b>" : "");
-  }
-
-  async function convertCirc() {
-    const circ = parseFloat($("calCirc").value);
-    const dia = parseFloat($("calDia").value);
-    const body = !isNaN(circ) && circ > 0 ? {circumference: circ}
-               : !isNaN(dia) && dia > 0 ? {diameter: dia} : null;
-    if (!body) { toast("Enter circumference or diameter in metres"); return; }
-    const d = await (await fetch("/api/calibrate/circ", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)})).json();
-    if (!d.ok) { toast(d.error); return; }
-    const delta = Math.abs(d.diameter_m - d.current_diameter_m);
-    $("circMsg").innerHTML =
-      `⌀ <b>${d.diameter_m} m</b> (${d.diameter_in}") · circ ${d.circumference_m} m<br>`
-      + `Set: <code>${d.env_line}</code>`
-      + (delta > 0.005 ? `<br><span style="color:var(--accent)">Differs from configured `
-        + `${d.current_diameter_m} m — update the service env if this measurement is right.</span>`
-        : `<br><span style="color:var(--good)">Matches configured value.</span>`);
-  }
-
-  let toastTimer;
-  function toast(msg) {
-    const t = $("toast");
-    t.textContent = msg; t.classList.add("show");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
-  }
 </script>
-</body>
-</html>
+{% endblock %}
