@@ -183,3 +183,10 @@ def set_setting(key: str, value: Any) -> None:
             (key, str(value)),
         )
         conn.commit()
+
+
+def delete_setting(key: str) -> None:
+    conn = _require_conn()
+    with _lock:
+        conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+        conn.commit()

@@ -112,11 +112,12 @@
   <div class="card">
     <h2>🔧 Calibration</h2>
     <p class="muted" style="margin:0 0 12px">
-      Wheel: ⌀{{ '%.3f'|format(wheel.diameter_m) }} m ·
+      <span id="wheelInfo">Wheel: ⌀{{ '%.3f'|format(wheel.diameter_m) }} m ·
       circ {{ '%.3f'|format(wheel.circumference_m) }} m ·
       {{ wheel.magnets_per_rev }} magnet{{ 's' if wheel.magnets_per_rev != 1 }}/rev ·
       {{ '%.4f'|format(wheel.distance_per_pulse_m) }} m/pulse ·
-      debounce {{ '%.0f'|format(wheel.debounce_ms) }} ms
+      debounce {{ '%.0f'|format(wheel.debounce_ms) }} ms{% if wheel.override %} ·
+      <b>override active</b>{% endif %}</span>
       <br>Heads-up: hand-spins during calibration still get logged as runs.
     </p>
 
@@ -149,7 +150,7 @@
           Start, rotate the wheel by hand exactly N full revolutions, then stop.
         </p>
 
-        <h2 style="margin-top:16px">Circumference → config</h2>
+        <h2 style="margin-top:16px">Wheel geometry</h2>
         <div class="row">
           <div>
             <label>Circumference (m)</label>
@@ -160,8 +161,14 @@
             <input type="number" id="calDia" step="0.001" min="0">
           </div>
           <button class="ghost" onclick="convertCirc()">Convert</button>
+          <button onclick="applyWheel()">Apply live</button>
         </div>
         <p class="muted" id="circMsg" style="margin-top:10px"></p>
+        <p class="muted" style="margin-top:4px">
+          Apply takes effect on the next pulse and persists across restarts
+          (overrides the service Environment= line).
+          <a href="#" onclick="clearWheel(); return false;">Revert to env/default</a>
+        </p>
       </div>
     </div>
   </div>
@@ -370,6 +377,38 @@
       calLogLine(line);
     }
   });
+
+  async function applyWheel() {
+    const circ = parseFloat($("calCirc").value);
+    const dia = parseFloat($("calDia").value);
+    const body = !isNaN(circ) && circ > 0 ? {circumference: circ}
+               : !isNaN(dia) && dia > 0 ? {diameter: dia} : null;
+    if (!body) { toast("Enter circumference or diameter in metres"); return; }
+    const d = await (await fetch("/api/wheel", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)})).json();
+    if (!d.ok) { toast(d.error); return; }
+    updateWheelInfo(d);
+    $("circMsg").innerHTML =
+      `<span style="color:var(--good)">Applied: ⌀ <b>${d.diameter_m} m</b> (${d.diameter_in}")`
+      + ` · circ ${d.circumference_m} m · ${d.distance_per_pulse_m} m/pulse.`
+      + ` Live now, persisted.</span>`;
+  }
+
+  async function clearWheel() {
+    const d = await (await fetch("/api/wheel", {method:"DELETE"})).json();
+    if (!d.ok) { toast(d.error); return; }
+    updateWheelInfo(d);
+    $("circMsg").innerHTML =
+      `Override cleared — back to env/default ⌀ ${d.diameter_m} m.`;
+  }
+
+  function updateWheelInfo(d) {
+    $("wheelInfo").innerHTML =
+      `Wheel: ⌀${d.diameter_m.toFixed(3)} m · circ ${d.circumference_m.toFixed(3)} m · `
+      + `${d.magnets_per_rev} magnet${d.magnets_per_rev !== 1 ? "s" : ""}/rev · `
+      + `${d.distance_per_pulse_m.toFixed(4)} m/pulse · debounce ${d.debounce_ms.toFixed(0)} ms`
+      + (d.override ? " · <b>override active</b>" : "");
+  }
 
   async function convertCirc() {
     const circ = parseFloat($("calCirc").value);

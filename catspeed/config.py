@@ -33,6 +33,24 @@ WHEEL_CIRCUMFERENCE = pi * WHEEL_DIAMETER_M
 MAGNETS_PER_REV = _env_int("CATSPEED_MAGNETS_PER_REV", 3)
 DISTANCE_PER_PULSE_M = WHEEL_CIRCUMFERENCE / MAGNETS_PER_REV
 
+# Boot-time diameter (env override or hardcoded default), kept so a runtime
+# override from the web UI can be cleared back to it without a restart.
+BOOT_WHEEL_DIAMETER_M = WHEEL_DIAMETER_M
+
+
+def apply_wheel_diameter(dia_m: float) -> None:
+    """Mutate wheel geometry at runtime.
+
+    sensor.py reads config.DISTANCE_PER_PULSE_M on every pulse (attribute
+    lookup, not a captured value), so the next pulse uses the new geometry
+    immediately — no restart required. Persistence is the caller's job
+    (settings table); precedence at boot is settings > env > default.
+    """
+    global WHEEL_DIAMETER_M, WHEEL_CIRCUMFERENCE, DISTANCE_PER_PULSE_M
+    WHEEL_DIAMETER_M = dia_m
+    WHEEL_CIRCUMFERENCE = pi * dia_m
+    DISTANCE_PER_PULSE_M = WHEEL_CIRCUMFERENCE / MAGNETS_PER_REV
+
 # --- GPIO pins (BCM numbering) -------------------------------------------
 HALL_PIN = _env_int("CATSPEED_HALL_PIN", 17)
 RELAY_PIN = _env_int("CATSPEED_RELAY_PIN", 23)
@@ -71,6 +89,12 @@ TREAT_PULSE_MS = _env_float("CATSPEED_TREAT_PULSE_MS", 250.0)  # how long relay 
 # --- Web ------------------------------------------------------------------
 WEB_HOST = _env_str("CATSPEED_WEB_HOST", "0.0.0.0")
 WEB_PORT = _env_int("CATSPEED_WEB_PORT", 5000)
+
+# --- TLS (optional) ---------------------------------------------------------
+# Set both to serve HTTPS instead of HTTP. Use mkcert-generated files so your
+# own devices trust them; public CAs can't issue certs for private LAN IPs.
+SSL_CERT = _env_str("CATSPEED_SSL_CERT", "")
+SSL_KEY = _env_str("CATSPEED_SSL_KEY", "")
 
 # --- Storage --------------------------------------------------------------
 # Default to a db/ folder next to the package so it works off-Pi too.

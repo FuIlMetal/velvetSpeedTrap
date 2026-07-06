@@ -13,9 +13,15 @@ Environment=CATSPEED_DB_PATH=/home/pi/catspeed/data/speed.db
 # Measured 2026-07-05 (29" chord, 3 magnets @ 120°):
 Environment=CATSPEED_WHEEL_DIAMETER_M=0.851
 Environment=CATSPEED_MAGNETS_PER_REV=3
-# Serve on port 80 so http://<hostname>/ works without :5000. Ports <1024 are
-# privileged; grant just the bind capability instead of running as root.
-Environment=CATSPEED_WEB_PORT=80
+# Serve HTTPS on 443. Ports <1024 are privileged; grant just the bind
+# capability instead of running as root (covers 443 the same as it did 80).
+Environment=CATSPEED_WEB_PORT=443
+# Cert/key issued by acme.sh (Let's Encrypt via DuckDNS DNS-01) and installed
+# with --install-cert to these paths; renewal restarts the service.
+Environment=CATSPEED_SSL_CERT=/home/pi/catspeed/certs/cert.pem
+Environment=CATSPEED_SSL_KEY=/home/pi/catspeed/certs/key.pem
+# Plain-HTTP fallback: comment the three lines above and use this instead.
+#Environment=CATSPEED_WEB_PORT=80
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 Restart=on-failure
 RestartSec=5

@@ -62,6 +62,15 @@ def main() -> None:
     db.init_db(args.db)
     log.info("Database ready at %s", args.db)
 
+    # Runtime wheel-diameter override (set from the dashboard) beats the
+    # env/default value. Clear it from the UI to fall back to the unit's
+    # Environment= line.
+    _dia_override = db.get_setting_float("wheel_diameter_m", 0.0)
+    if _dia_override > 0:
+        config.apply_wheel_diameter(_dia_override)
+        log.info("Wheel diameter override from settings: %.4f m "
+                 "(env/default was %.4f m)", _dia_override, config.BOOT_WHEEL_DIAMETER_M)
+
     # --- dispenser -------------------------------------------------------
     relay = make_relay(args.simulate)
     treat = TreatDispenser(relay, on_dispense=web.broadcast_treat)
@@ -119,11 +128,21 @@ def main() -> None:
 
     # --- web -------------------------------------------------------------
     app = web.create_app(tracker, treat, state.snapshot)
-    log.info("Dashboard: http://%s:%d/", args.host, args.port)
+
+    run_kwargs = {"allow_unsafe_werkzeug": True}
+    scheme = "http"
+    if config.SSL_CERT and config.SSL_KEY:
+        # werkzeug accepts a (certfile, keyfile) tuple; flask-socketio passes
+        # extra kwargs straight through in threading mode.
+        run_kwargs["ssl_context"] = (config.SSL_CERT, config.SSL_KEY)
+        scheme = "https"
+    elif config.SSL_CERT or config.SSL_KEY:
+        log.warning("Only one of CATSPEED_SSL_CERT / CATSPEED_SSL_KEY is set — "
+                    "both are required; serving plain HTTP")
+    log.info("Dashboard: %s://%s:%d/", scheme, args.host, args.port)
 
     try:
-        web.socketio.run(app, host=args.host, port=args.port,
-                         allow_unsafe_werkzeug=True)
+        web.socketio.run(app, host=args.host, port=args.port, **run_kwargs)
     except KeyboardInterrupt:
         log.info("Shutting down…")
     finally:

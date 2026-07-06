@@ -294,6 +294,57 @@ def create_app(tracker, treat, get_state: Callable[[], Dict[str, float]]) -> Fla
             "current_diameter_m": config.WHEEL_DIAMETER_M,
         })
 
+    def _wheel_payload() -> dict:
+        return {
+            "diameter_m": round(config.WHEEL_DIAMETER_M, 4),
+            "diameter_in": round(config.WHEEL_DIAMETER_M / 0.0254, 1),
+            "circumference_m": round(config.WHEEL_CIRCUMFERENCE, 4),
+            "distance_per_pulse_m": round(config.DISTANCE_PER_PULSE_M, 4),
+            "magnets_per_rev": config.MAGNETS_PER_REV,
+            "debounce_ms": config.PULSE_DEBOUNCE_MS,
+            "override": db.get_setting("wheel_diameter_m") is not None,
+            "boot_diameter_m": round(config.BOOT_WHEEL_DIAMETER_M, 4),
+        }
+
+    @app.route("/api/wheel", methods=["GET"])
+    def api_wheel_get():
+        return jsonify({"ok": True, **_wheel_payload()})
+
+    @app.route("/api/wheel", methods=["POST"])
+    def api_wheel_set():
+        """Apply a new diameter (or circumference) live and persist it.
+
+        Takes effect on the next pulse; survives restarts via the settings
+        table, which beats the systemd Environment= line at boot.
+        """
+        body = request.get_json(force=True) or {}
+        circ = body.get("circumference")
+        dia = body.get("diameter")
+        try:
+            if circ is not None:
+                dia = float(circ) / pi
+            elif dia is not None:
+                dia = float(dia)
+            else:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({"ok": False,
+                            "error": "expected {'circumference': m} or {'diameter': m}"}), 400
+        if not (0.1 <= dia <= 3.0):
+            return jsonify({"ok": False,
+                            "error": f"diameter {dia:.4f} m outside sane range 0.1-3.0 m "
+                                     "(values are in metres)"}), 400
+        config.apply_wheel_diameter(dia)
+        db.set_setting("wheel_diameter_m", f"{dia:.4f}")
+        return jsonify({"ok": True, **_wheel_payload()})
+
+    @app.route("/api/wheel", methods=["DELETE"])
+    def api_wheel_clear():
+        """Remove the runtime override; revert to the env/default diameter."""
+        db.delete_setting("wheel_diameter_m")
+        config.apply_wheel_diameter(config.BOOT_WHEEL_DIAMETER_M)
+        return jsonify({"ok": True, **_wheel_payload()})
+
     @socketio.on("connect")
     def on_connect():
         emit("speed", {"mph": tracker.snapshot_speed()})
