@@ -127,7 +127,8 @@ def main() -> None:
     tick_thread.start()
 
     # --- web -------------------------------------------------------------
-    app = web.create_app(tracker, treat, state.snapshot)
+    app = web.create_app(tracker, treat, state.snapshot,
+                         refresh_state=state.refresh_from_db)
 
     run_kwargs = {"allow_unsafe_werkzeug": True}
     scheme = "http"

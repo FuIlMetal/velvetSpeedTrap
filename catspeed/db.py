@@ -105,6 +105,66 @@ def recent_runs(n: int = 20) -> List[sqlite3.Row]:
         ).fetchall()
 
 
+def delete_runs(ids: List[int]) -> int:
+    """Delete specific runs by id. Returns the number of rows removed.
+
+    Callers that cache peak figures (AppState) must refresh afterwards —
+    the deleted run may have held the all-time or today record.
+    """
+    ids = [int(i) for i in ids]
+    if not ids:
+        return 0
+    conn = _require_conn()
+    with _lock:
+        placeholders = ",".join("?" * len(ids))
+        cur = conn.execute(
+            f"DELETE FROM runs WHERE id IN ({placeholders})", ids
+        )
+        conn.commit()
+        return cur.rowcount
+
+
+def delete_all_runs() -> int:
+    """Wipe the runs table. Returns the number of rows removed."""
+    conn = _require_conn()
+    with _lock:
+        cur = conn.execute("DELETE FROM runs")
+        try:
+            # Reset AUTOINCREMENT so ids start from 1 again. sqlite_sequence
+            # only exists once a row has ever been inserted.
+            conn.execute("DELETE FROM sqlite_sequence WHERE name='runs'")
+        except sqlite3.OperationalError:
+            pass
+        conn.commit()
+        return cur.rowcount
+
+
+def daily_activity(days: int = 84) -> List[sqlite3.Row]:
+    """Per-day aggregates for the last `days` days (local dates, oldest first).
+
+    Days with no runs are simply absent — the UI fills the gaps.
+    """
+    midnight = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = midnight.timestamp() - (days - 1) * 86400
+    conn = _require_conn()
+    with _lock:
+        return conn.execute(
+            """
+            SELECT date(started_at, 'unixepoch', 'localtime') AS day,
+                   COUNT(*)          AS runs,
+                   AVG(avg_mph)      AS avg_mph,
+                   MAX(peak_mph)     AS peak_mph,
+                   SUM(duration_s)   AS total_s,
+                   SUM(treat_given)  AS treats
+            FROM runs
+            WHERE started_at >= ?
+            GROUP BY day
+            ORDER BY day ASC
+            """,
+            (cutoff,),
+        ).fetchall()
+
+
 def all_time_peak() -> float:
     conn = _require_conn()
     with _lock:

@@ -5,6 +5,8 @@ Flask + Socket.IO dashboard.
 - GET  /api/state        current speed and peaks (JSON)
 - GET  /api/top?n=10     top runs by peak speed (JSON)
 - GET  /api/recent?n=20  most recent runs (JSON)
+- GET  /api/daily?days=84  per-day run count / avg / peak (JSON)
+- DELETE /api/runs       {"ids": [1,2]} or {"all": true}  remove runs
 - POST /api/threshold    {"mph": 8.0}      set treat threshold
 - POST /api/cooldown     {"seconds": 60}   set treat cooldown
 - POST /api/test_treat   manually dispense one treat
@@ -165,11 +167,17 @@ def _rows(rows) -> List[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
-def create_app(tracker, treat, get_state: Callable[[], Dict[str, float]]) -> Flask:
+def create_app(
+    tracker,
+    treat,
+    get_state: Callable[[], Dict[str, float]],
+    refresh_state: Optional[Callable[[], None]] = None,
+) -> Flask:
     app = Flask(__name__)
     _ctx["tracker"] = tracker
     _ctx["treat"] = treat
     _ctx["get_state"] = get_state
+    _ctx["refresh_state"] = refresh_state
 
     @app.route("/")
     def index():
@@ -227,6 +235,61 @@ def create_app(tracker, treat, get_state: Callable[[], Dict[str, float]]) -> Fla
     def api_recent():
         n = request.args.get("n", default=20, type=int)
         return jsonify(_rows(db.recent_runs(n)))
+
+    @app.route("/api/daily")
+    def api_daily():
+        days = request.args.get("days", default=84, type=int)
+        days = max(1, min(days, 366))
+        rows = [
+            {
+                "day": r["day"],                      # 'YYYY-MM-DD' local
+                "runs": r["runs"],
+                "avg_mph": round(r["avg_mph"] or 0.0, 2),
+                "peak_mph": round(r["peak_mph"] or 0.0, 2),
+                "total_s": round(r["total_s"] or 0.0, 1),
+                "treats": r["treats"] or 0,
+            }
+            for r in db.daily_activity(days)
+        ]
+        return jsonify({"days": days, "activity": rows})
+
+    def _stats_payload() -> dict:
+        return {
+            "run_count": db.run_count(),
+            "all_time": round(db.all_time_peak(), 2),
+            "peak_today": round(db.peak_today(), 2),
+            "treats_today": db.treats_today(),
+        }
+
+    @app.route("/api/runs", methods=["DELETE"])
+    def api_delete_runs():
+        """Remove runs, then recompute cached peaks (OLED / /api/state).
+
+        Body: {"ids": [1, 2, ...]}  or  {"all": true}
+        """
+        body = request.get_json(force=True) or {}
+        if body.get("all") is True:
+            deleted = db.delete_all_runs()
+        else:
+            ids = body.get("ids")
+            if not isinstance(ids, list) or not ids:
+                return jsonify({"ok": False,
+                                "error": "expected {'ids': [..]} or {'all': true}"}), 400
+            try:
+                ids = [int(i) for i in ids]
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "ids must be integers"}), 400
+            deleted = db.delete_runs(ids)
+
+        # The deleted run(s) may have held the record — refresh the in-memory
+        # peak cache and tell any open dashboards to re-pull their tables.
+        refresh = _ctx.get("refresh_state")
+        if callable(refresh):
+            refresh()
+        stats = _stats_payload()
+        socketio.emit("runs_changed", {"deleted": deleted, "stats": stats})
+        log.info("Deleted %d run(s) via dashboard", deleted)
+        return jsonify({"ok": True, "deleted": deleted, "stats": stats})
 
     @app.route("/api/threshold", methods=["POST"])
     def api_threshold():

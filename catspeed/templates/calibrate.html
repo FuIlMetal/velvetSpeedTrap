@@ -65,6 +65,33 @@
       </div>
     </div>
   </div>
+
+  <div class="card">
+    <h2>🗑 Manage runs</h2>
+    <p class="muted" style="margin:0 0 12px">
+      Deleting runs recalculates peaks, records and totals — the all-time
+      record can go <i>down</i> if you remove the run that held it.
+      Useful for wiping hand-spin runs logged during calibration.
+    </p>
+    <div class="row" style="margin-bottom:10px">
+      <button class="ghost" id="delSelBtn" onclick="deleteSelected()" disabled>Delete selected</button>
+      <button class="ghost danger" onclick="deleteAll()">Delete ALL runs</button>
+      <span class="muted" id="runsTotals" style="flex:1; align-self:center"></span>
+    </div>
+    <div style="max-height:340px; overflow-y:auto">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:28px"><input type="checkbox" id="selAll" onchange="toggleAll(this)"></th>
+            <th>Peak</th><th>Avg</th><th>Duration</th><th>Rev</th><th>When</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="runsBody">
+          <tr><td colspan="7" class="muted">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -195,6 +222,70 @@
         + `${d.current_diameter_m} m — update the service env if this measurement is right.</span>`
         : `<br><span style="color:var(--good)">Matches configured value.</span>`);
   }
+
+  // --- manage runs ----------------------------------------------------
+
+  async function loadRuns() {
+    const runs = await (await fetch("/api/recent?n=200")).json();
+    $("runsBody").innerHTML = runs.map((r) => `
+      <tr>
+        <td><input type="checkbox" class="runSel" value="${r.id}" onchange="selChanged()"></td>
+        <td><b>${r.peak_mph.toFixed(2)}</b></td>
+        <td>${r.avg_mph.toFixed(2)}</td>
+        <td>${r.duration_s.toFixed(1)}s</td>
+        <td>${r.revolutions}</td>
+        <td class="muted">${r.started_at_human}</td>
+        <td>${r.treat_given ? '<span class="pill">treat</span>' : ''}</td>
+      </tr>`).join("")
+      || `<tr><td colspan="7" class="muted">No runs recorded.</td></tr>`;
+    $("selAll").checked = false;
+    selChanged();
+  }
+
+  function selected() {
+    return [...document.querySelectorAll(".runSel:checked")].map(cb => parseInt(cb.value));
+  }
+
+  function selChanged() {
+    const n = selected().length;
+    $("delSelBtn").disabled = n === 0;
+    $("delSelBtn").textContent = n ? `Delete selected (${n})` : "Delete selected";
+  }
+
+  function toggleAll(master) {
+    document.querySelectorAll(".runSel").forEach(cb => cb.checked = master.checked);
+    selChanged();
+  }
+
+  function showTotals(s) {
+    $("runsTotals").textContent =
+      `${s.run_count} runs · record ${s.all_time.toFixed(2)} mph · today ${s.peak_today.toFixed(2)} mph`;
+  }
+
+  async function deleteRuns(body) {
+    const d = await (await fetch("/api/runs", {method:"DELETE",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)})).json();
+    if (!d.ok) { toast(d.error || "delete failed"); return; }
+    toast(`Deleted ${d.deleted} run${d.deleted === 1 ? "" : "s"}`);
+    showTotals(d.stats);
+    await loadRuns();
+  }
+
+  async function deleteSelected() {
+    const ids = selected();
+    if (!ids.length) return;
+    if (!confirm(`Delete ${ids.length} run${ids.length === 1 ? "" : "s"}? `
+      + `Peaks and records will be recalculated.`)) return;
+    await deleteRuns({ids});
+  }
+
+  async function deleteAll() {
+    if (!confirm("Delete ALL runs? This wipes the entire leaderboard and history.")) return;
+    if (!confirm("Really? There is no undo.")) return;
+    await deleteRuns({all: true});
+  }
+
+  loadRuns();
 
 </script>
 {% endblock %}

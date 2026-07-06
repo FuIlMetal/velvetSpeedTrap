@@ -85,6 +85,20 @@
       </tbody>
     </table>
   </div>
+
+  <div class="card">
+    <h2>📅 Daily activity — last 12 weeks</h2>
+    <div class="heatwrap">
+      <div class="heatmonths" id="heatMonths"></div>
+      <div class="heatmap" id="heatmap"></div>
+    </div>
+    <div class="heatfoot">
+      <span class="muted" id="heatDetail">Hover a day for details.</span>
+      <span class="heatlegend muted">less
+        <i class="hm hm0"></i><i class="hm hm1"></i><i class="hm hm2"></i><i class="hm hm3"></i><i class="hm hm4"></i>
+        more</span>
+    </div>
+  </div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -126,7 +140,19 @@
     lastRunEpoch = Date.now() / 1000;
     refreshLastRun();
     setRunning(false);
-    setTimeout(refreshTables, 400);  // let the DB write settle
+    setTimeout(() => { refreshTables(); loadHeatmap(); }, 400);  // let the DB write settle
+  });
+
+  socket.on("runs_changed", (d) => {
+    // Runs were deleted (from the calibration page) — stats may have DROPPED.
+    if (d && d.stats) {
+      $("peakToday").textContent = d.stats.peak_today.toFixed(2);
+      $("allTime").textContent = d.stats.all_time.toFixed(2);
+      $("runCount").textContent = d.stats.run_count;
+      $("treatsToday").textContent = d.stats.treats_today;
+    }
+    refreshTables();
+    loadHeatmap();
   });
 
   socket.on("treat", () => {
@@ -165,6 +191,52 @@
       || `<tr><td colspan="5" class="muted">No runs yet.</td></tr>`;
   }
 
+  // --- daily activity heatmap ----------------------------------------
+  const HEAT_DAYS = 84;  // 12 weeks
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+  function localISO(d) {
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0")
+      + "-" + String(d.getDate()).padStart(2,"0");
+  }
+
+  async function loadHeatmap() {
+    const d = await (await fetch(`/api/daily?days=${HEAT_DAYS}`)).json();
+    const byDay = Object.fromEntries(d.activity.map(a => [a.day, a]));
+    const maxRuns = Math.max(1, ...d.activity.map(a => a.runs));
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const start = new Date(today); start.setDate(start.getDate() - (HEAT_DAYS - 1));
+    // back up to the Sunday on/before the start so columns are whole weeks
+    const gridStart = new Date(start); gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
+    let cells = "", months = "", lastMonth = -1, col = 0;
+    for (let t = new Date(gridStart); t <= today; t.setDate(t.getDate() + 1)) {
+      if (t.getDay() === 0) {  // new column (week)
+        col++;
+        if (t.getMonth() !== lastMonth) {
+          months += `<span style="grid-column:${col}">${MONTHS[t.getMonth()]}</span>`;
+          lastMonth = t.getMonth();
+        }
+      }
+      if (t < start) { cells += `<i class="hm future"></i>`; continue; }
+      const key = localISO(t);
+      const a = byDay[key];
+      let lvl = 0;
+      if (a) lvl = Math.min(4, 1 + Math.floor(3 * (a.runs - 1) / maxRuns));
+      const label = a
+        ? `${key}: ${a.runs} run${a.runs === 1 ? "" : "s"} · avg ${a.avg_mph.toFixed(2)} mph`
+          + ` · peak ${a.peak_mph.toFixed(2)} · ${Math.round(a.total_s)}s on wheel`
+          + (a.treats ? ` · 🍪×${a.treats}` : "")
+        : `${key}: no runs`;
+      cells += `<i class="hm hm${lvl}" title="${label}" data-label="${label}"></i>`;
+    }
+    $("heatmap").innerHTML = cells;
+    $("heatMonths").innerHTML = months;
+    $("heatmap").querySelectorAll(".hm[data-label]").forEach(el =>
+      el.addEventListener("mouseenter", () => $("heatDetail").textContent = el.dataset.label));
+  }
+  loadHeatmap();
 
 </script>
 {% endblock %}
