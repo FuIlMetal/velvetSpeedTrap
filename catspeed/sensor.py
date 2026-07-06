@@ -53,7 +53,18 @@ class SpeedTracker:
                 dt = now_mono - self.last_pulse_mono
                 if dt * 1000.0 < config.PULSE_DEBOUNCE_MS:
                     return  # contact bounce / double trigger — ignore entirely
-                inst_mph = (config.DISTANCE_PER_PULSE_M / dt) * config.MPS_TO_MPH
+                if dt <= config.IDLE_TIMEOUT_S:
+                    # Only compute a speed for intra-run intervals. A dt longer
+                    # than the idle timeout spans the gap between runs and would
+                    # inject a near-zero phantom sample into the smoothing
+                    # window, dragging peak below avg on short runs.
+                    inst_mph = (config.DISTANCE_PER_PULSE_M / dt) * config.MPS_TO_MPH
+                    if inst_mph > config.MAX_PLAUSIBLE_MPH:
+                        # Electrical noise double-trigger: ignore entirely.
+                        # Counting it would add phantom distance to avg_mph,
+                        # and moving last_pulse_mono would corrupt the next
+                        # interval. Keep the previous pulse as the anchor.
+                        return
 
             if not self.run_active:
                 self.run_active = True
@@ -67,8 +78,8 @@ class SpeedTracker:
             self.last_pulse_mono = now_mono
             self.last_pulse_epoch = now_epoch
 
-            # First pulse of a run has no interval yet; and reject noise spikes.
-            if inst_mph is not None and inst_mph <= config.MAX_PLAUSIBLE_MPH:
+            # First pulse of a run (or first after an idle gap) has no interval.
+            if inst_mph is not None:
                 self._smooth.append(inst_mph)
                 self.current_mph = sum(self._smooth) / len(self._smooth)
                 self.run_peak_mph = max(self.run_peak_mph, self.current_mph)
@@ -112,6 +123,9 @@ class SpeedTracker:
                 self.run_active = False
                 self.run_peak_mph = 0.0
                 self.run_pulses = 0
+                # Drop the anchor: the next pulse is the start of a new run and
+                # must not compute an interval across the idle gap.
+                self.last_pulse_mono = None
 
         if went_idle:
             self.on_speed_update(0.0)

@@ -82,10 +82,18 @@ class HallSensor:
             from gpiozero import Button
             # pull_up=True: A3144 open-collector output idles HIGH via the
             # external 10k pull-up and is pulled LOW when the magnet passes.
+            #
+            # bounce_time must be None: under the lgpio pin factory it maps to
+            # kernel debounce, whose semantics are "the level must be STABLE
+            # for the whole period before the edge is reported". The Hall LOW
+            # pulse is only a few ms at running speed, so bounce_time=20ms
+            # silently swallowed real pulses (module LED lit, no callback).
+            # Double-trigger rejection is handled in software by
+            # SpeedTracker.on_pulse via PULSE_DEBOUNCE_MS.
             self._button = Button(
                 config.HALL_PIN,
                 pull_up=True,
-                bounce_time=config.PULSE_DEBOUNCE_MS / 1000.0,
+                bounce_time=None,
             )
             self._button.when_pressed = on_pulse
 
